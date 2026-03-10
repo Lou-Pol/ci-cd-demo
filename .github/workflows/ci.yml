@@ -1,60 +1,89 @@
 name: CI-CD
+
 on:
-push:
-branches: [ "main" ]
-tags: [ "v*" ]
-pull_request:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+
 permissions:
-contents: read
-packages: write
+  contents: read
+  packages: write
+
 env:
-IMAGE_NAME: ci-cd-demo
+  IMAGE_NAME: ci-cd-demo
+
 jobs:
-test:
-runs-on: ubuntu-latest
-steps:- uses: actions/checkout@v4- uses: actions/setup-node@v4
-with:
-node-version: 22- name: Install dependencies
-run: npm ci- name: Run tests
-run: npm test
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run tests
+        run: npm test
+
 build_scan_push:
-runs-on: ubuntu-latest
-needs: test
-steps:- uses: actions/checkout@v4- name: Set up Docker Buildx
-uses: docker/setup-buildx-action@v3- name: Login to GHCR
-uses: docker/login-action@v3
-with:
-registry: ghcr.io
-username: ${{ github.actor }}
-password: ${{ secrets.GITHUB_TOKEN }}
-- name: Compute lowercase image repo
-id: img
-run: |
-          echo "IMAGE_REPO=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT- name: Build image locally
-run: docker build -t ci-cd-demo:ci .- name: Trivy scan local image (fail on CRITICAL)
-uses: aquasecurity/trivy-action@master
-with:
-image-ref: ci-cd-demo:ci
-scanners: vuln
-format: table
-exit-code: "1"
-ignore-unfixed: true
-vuln-type: "os,library"
-severity: "CRITICAL"- name: Trivy report (including HIGH) - non blocking
-uses: aquasecurity/trivy-action@master
-with:
-image-ref: ci-cd-demo:ci
-scanners: vuln
-format: table
-exit-code: "0"
-ignore-unfixed: true
-vuln-type: "os,library"
-severity: "CRITICAL,HIGH"- name: Tag image for GHCR
-if: ${{ github.event_name != 'pull_request' }}
-run: |
-          docker tag ci-cd-demo:ci ${{ steps.img.outputs.IMAGE_REPO }}:sha-${{ github.sha }}
-          docker tag ci-cd-demo:ci ${{ steps.img.outputs.IMAGE_REPO }}:latest- name: Push image to GHCR
-if: ${{ github.event_name != 'pull_request' }}
-run: |
-          docker push ${{ steps.img.outputs.IMAGE_REPO }}:sha-${{ github.sha }}
-          docker push ${{ steps.img.outputs.IMAGE_REPO }}:latest
+  runs-on: ubuntu-latest
+  needs: test
+
+  steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Login to GHCR 
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Compute lowercase image repo
+      id: img
+      run: |
+        echo "IMAGE_REPO=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
+    
+    - name: Build image locally
+      run: docker build -t ci-cd-demo:ci .
+      
+    - name: Trivy scan local image (fail on CRITICAL)
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ci-cd-demo:ci
+        scanners: vuln
+        format: table
+        exit-code: "1"
+        ignore-unfixed: true
+        vuln-type: "os,library"
+        severity: "CRITICAL"
+    
+    - name: Trivy report (including HIGH) - non blocking
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ci-cd-demo:ci
+        scanners: vuln
+        format: table
+        exit-code: "0"
+        ignore-unfixed: true
+        vuln-type: "os,library"
+        severity: "CRITICAL,HIGH"
+    
+    - name: Tag image for GHCR
+      if: ${{ github.event_name != 'pull_request' }}
+      run: |
+        docker tag ci-cd-demo:ci ${{ steps.img.outputs.IMAGE_REPO }}:sha-${{ github.sha }}
+        docker tag ci-cd-demo:ci ${{ steps.img.outputs.IMAGE_REPO }}:latest
+    
+    - name: Push image to GHCR
+      if: ${{ github.event_name != 'pull_request' }}
+      run: |
+        docker push ${{ steps.img.outputs.IMAGE_REPO }}:sha-${{ github.sha }}
+        docker push ${{ steps.img.outputs.IMAGE_REPO }}:latest
